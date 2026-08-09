@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>中文背標批量圖片生成器</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- xlsx-js-style for reading/writing Excel with cell background colors -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <!-- JSZip for packaging PNG images -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <!-- FileSaver for browser file downloads -->
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-brand">
+        <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <line x1="12" y1="3" x2="12" y2="21"/>
+          <line x1="3" y1="9" x2="21" y2="9"/>
+          <line x1="3" y1="15" x2="21" y2="15"/>
+        </svg>
+        <div>
+          <h1>中文背標批量圖片生成器</h1>
+          <p class="subtitle">依據「中文標籤 template.xlsx」雙欄版型，批量讀取 Excel 並輸出印刷級背標圖片</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btnDownloadTemplate" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          下載標準 Excel 填寫範本
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- 上傳與設定區域 -->
+      <section class="panel-section">
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept=".xlsx, .xls" hidden>
+          <div class="drop-zone-content">
+            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <polyline points="9 15 12 12 15 15"/>
+            </svg>
+            <h3>拖曳 Excel 檔案至此處，或 <span class="browse-link">點擊瀏覽檔案</span></h3>
+            <p class="file-hint">支援格式：.xlsx, .xls (請上傳包含 21 個背標欄位之 Excel 檔)</p>
+            <div id="fileInfo" class="file-info hidden"></div>
+          </div>
+        </div>
+
+        <!-- 導出與排版設定 -->
+        <div class="config-panel">
+          <div class="config-group">
+            <label for="labelPreset">常用尺寸預設</label>
+            <select id="labelPreset">
+              <option value="120x35" selected>120 x 35 mm (超寬版 - 建議款式)</option>
+              <option value="130x38">130 x 38 mm (特大超寬版)</option>
+              <option value="100x38">100 x 38 mm (標準寬版)</option>
+              <option value="90x35">90 x 35 mm (精巧寬版)</option>
+              <option value="custom">自訂尺寸</option>
+            </select>
+          </div>
+          <div class="config-group">
+            <label for="labelWidth">標籤寬度 (mm)</label>
+            <input type="number" id="labelWidth" value="120" min="40" max="300" step="5">
+          </div>
+          <div class="config-group">
+            <label for="labelHeight">標籤高度 (mm)</label>
+            <input type="number" id="labelHeight" value="35" min="20" max="200" step="2">
+          </div>
+          <div class="config-group">
+            <label for="baseFontSize">基準字級 (pt)</label>
+            <input type="number" id="baseFontSize" value="9" min="5" max="18" step="0.5">
+          </div>
+          <div class="config-group">
+            <label for="namingFormat">ZIP 檔內圖片命名格式</label>
+            <select id="namingFormat">
+              <option value="safe" selected>商品名稱_規格_背標.png (無前綴編號)</option>
+              <option value="number">僅純數字編號 (001.png, 002.png)</option>
+            </select>
+          </div>
+          <div class="config-group">
+            <label for="dpiSelect">輸出解析度 (DPI)</label>
+            <select id="dpiSelect">
+              <option value="300" selected>300 DPI (高清印刷級)</option>
+              <option value="200">200 DPI (標準列印)</option>
+              <option value="150">150 DPI (螢幕預覽)</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 進度條與批量操作 -->
+      <section id="actionSection" class="action-section hidden">
+        <div class="action-bar">
+          <div class="status-summary">
+            <span>共解析到 <strong id="totalCount">0</strong> 筆背標資料</span>
+          </div>
+          <div class="btn-group">
+            <button id="btnGenerateZip" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              打包下載 ZIP (.zip)
+            </button>
+            <button id="btnPrintAll" class="btn btn-secondary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                <polyline points="6 9 6 2 18 2 18 9"/>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+              </svg>
+              一鍵列印所有背標
+            </button>
+          </div>
+        </div>
+
+        <!-- 進度條容器 -->
+        <div id="progressContainer" class="progress-container hidden">
+          <div class="progress-info">
+            <span id="progressText">正在生成圖片...</span>
+            <span id="progressPercent">0%</span>
+          </div>
+          <div class="progress-track">
+            <div id="progressBar" class="progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 背標卡片列表區 -->
+      <section id="previewSection" class="preview-section hidden">
+        <h2 class="section-title">背標預覽與單張導出</h2>
+        <div id="cardsGrid" class="cards-grid"></div>
+      </section>
+    </main>
+
+    <!-- Modal: 單張背標檢視與微調 -->
+    <div id="modalOverlay" class="modal-overlay hidden">
+      <div class="modal-card">
+        <button id="modalClose" class="modal-close">&times;</button>
+        <h3 class="modal-title">背標放大預覽</h3>
+        <div id="modalContent" class="modal-content"></div>
+        <div class="modal-actions">
+          <button id="btnDownloadSingle" class="btn btn-primary">下載單張 PNG</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

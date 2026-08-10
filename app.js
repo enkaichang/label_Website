@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnDownloadTemplate = document.getElementById('btnDownloadTemplate');
   const actionSection = document.getElementById('actionSection');
   const totalCountEl = document.getElementById('totalCount');
+  const btnSaveToFolder = document.getElementById('btnSaveToFolder');
   const btnGenerateZip = document.getElementById('btnGenerateZip');
   const btnPrintAll = document.getElementById('btnPrintAll');
   const progressContainer = document.getElementById('progressContainer');
@@ -124,6 +125,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // 字型載入完成後自動重新繪製以套用最高清晰度 Noto Sans TC 向量字形
+  if (document.fonts) {
+    document.fonts.ready.then(() => {
+      if (parsedItems.length > 0) renderAllLabels(false);
+    });
+  }
+
   btnDownloadTemplate.addEventListener('click', generateStandardExcelTemplate);
 
   // 2. 讀取 Excel
@@ -213,21 +221,26 @@ document.addEventListener('DOMContentLoaded', () => {
     renderAllLabels();
   }
 
-  // 4. 渲染所有背標 (若品名超長則自動拓寬並同步更新 labelWidth 輸入框)
+  // 4. 渲染所有背標 (若品名超長則自動拓寬並同步更新 labelWidth 輸入框，且強制高度至少 1000px)
   function renderAllLabels(autoUpdateInput = true) {
     if (parsedItems.length === 0) return;
 
     let widthMm = parseFloat(inputWidth.value) || 120;
     const heightMm = parseFloat(inputHeight.value) || 35;
     const baseFontSizePt = parseFloat(inputFontSize.value) || 9;
-    const dpi = parseInt(selectDpi.value, 10) || 300;
+    const minCanvasHeight = 1000;
+    const baseDpi = parseInt(selectDpi.value, 10) || 600;
     const mmToInch = 1 / 25.4;
+
+    // 計算有效 DPI：若指定高度換算像素未達 1000px，則自動等比提升 DPI 確保高度至少 1000px
+    const minDpiForHeight = Math.ceil(minCanvasHeight / (heightMm * mmToInch));
+    const effectiveDpi = Math.max(baseDpi, minDpiForHeight);
 
     // 先量測所有背標中，最長品名所需的最小寬度 (確保品名絕不換行)
     let maxActualWidthMm = widthMm;
     parsedItems.forEach(item => {
-      const testCanvas = renderLabelToCanvas(item, widthMm, heightMm, baseFontSizePt, dpi);
-      const itemW = Math.round(testCanvas.width / (mmToInch * dpi));
+      const testCanvas = renderLabelToCanvas(item, widthMm, heightMm, baseFontSizePt, effectiveDpi);
+      const itemW = Math.round(testCanvas.width / (mmToInch * effectiveDpi));
       if (itemW > maxActualWidthMm) {
         maxActualWidthMm = itemW;
       }
@@ -246,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
     generatedCanvases = [];
 
     parsedItems.forEach((item, index) => {
-      const canvas = renderLabelToCanvas(item, widthMm, heightMm, baseFontSizePt, dpi);
+      const canvas = renderLabelToCanvas(item, widthMm, heightMm, baseFontSizePt, effectiveDpi);
       generatedCanvases.push({ canvas, item, index });
 
       const card = document.createElement('div');
@@ -254,12 +267,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const productName = item.product_name || `商品 #${index + 1}`;
       const specName = item.spec ? ` (${item.spec})` : '';
-      const actualWidthMm = Math.round(canvas.width / (mmToInch * dpi));
+      const actualWidthMm = Math.round(canvas.width / (mmToInch * effectiveDpi));
 
       card.innerHTML = `
         <div class="card-header">
           <span class="card-title" title="${productName}${specName}">#${index + 1} ${productName}${specName}</span>
-          <span class="card-badge">${actualWidthMm}x${heightMm}mm</span>
+          <span class="card-badge">${actualWidthMm}x${heightMm}mm (${canvas.width}x${canvas.height}px)</span>
         </div>
         <div class="card-canvas-wrapper"></div>
         <div class="card-actions">
@@ -277,11 +290,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 5. 無邊框、純文字雙欄對齊背標渲染演算法 (產品名稱不換行 + 動態自適應拓寬模式)
+  // 5. 無邊框、純文字雙欄對齊背標渲染演算法 (高度至少 1000px + 產品名稱不換行 + 動態自適應拓寬)
   function renderLabelToCanvas(item, baseWidthMm, heightMm, baseFontSizePt, dpi) {
+    const minCanvasHeight = 1000;
     const mmToInch = 1 / 25.4;
-    const baseCanvasWidth = Math.round(baseWidthMm * mmToInch * dpi);
-    const canvasHeight = Math.round(heightMm * mmToInch * dpi);
+    const minDpiForHeight = Math.ceil(minCanvasHeight / (heightMm * mmToInch));
+    const effectiveDpi = Math.max(dpi || 600, minDpiForHeight);
+
+    const baseCanvasWidth = Math.round(baseWidthMm * mmToInch * effectiveDpi);
+    const canvasHeight = Math.max(Math.round(heightMm * mmToInch * effectiveDpi), minCanvasHeight);
 
     // 垂直邊距 (3% 邊距)
     const padY = Math.round(canvasHeight * 0.03);
@@ -292,13 +309,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const baseAvailableW = baseCanvasWidth - basePadX * 2;
     const baseLeftMaxW = Math.round(baseAvailableW * 0.40);
     const baseRightMaxW = Math.round(baseAvailableW * 0.56);
-    const colGap = Math.max(Math.round(baseAvailableW * 0.04), 24);
+    const colGap = Math.max(Math.round(baseAvailableW * 0.04), Math.round(6 * (effectiveDpi / 72)));
 
     const leftFields = FIELD_DEFINITIONS.filter(f => f.side === 'left');
     const rightFields = FIELD_DEFINITIONS.filter(f => f.side === 'right');
 
     // 動態防溢出字型等級計算
-    let fontSizePx = baseFontSizePt * (dpi / 72);
+    let fontSizePx = baseFontSizePt * (effectiveDpi / 72);
     const lineSpacingRatio = 1.32;
     let isFit = false;
 
@@ -312,16 +329,18 @@ document.addEventListener('DOMContentLoaded', () => {
     let finalLeftX = basePadX;
     let finalRightX = basePadX + baseLeftMaxW + colGap;
 
-    const fontStack = '-apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+    const fontStack = '"Noto Sans TC", "Microsoft JhengHei", "PingFang TC", -apple-system, BlinkMacSystemFont, sans-serif';
 
     // 建立臨時量測 Canvas context
     const measureCanvas = document.createElement('canvas');
     const measureCtx = measureCanvas.getContext('2d');
+    measureCtx.imageSmoothingEnabled = true;
+    measureCtx.imageSmoothingQuality = 'high';
 
     const cleanProductName = (item.product_name || '').replace(/[\r\n\t]+/g, ' ').trim();
 
-    while (!isFit && fontSizePx >= 5 * (dpi / 72)) {
-      measureCtx.font = `${Math.round(fontSizePx)}px ${fontStack}`;
+    while (!isFit && fontSizePx >= 4 * (effectiveDpi / 72)) {
+      measureCtx.font = `500 ${fontSizePx}px ${fontStack}`;
       lineStep = fontSizePx * lineSpacingRatio;
 
       // 欄位標籤固定寬度 (對齊左欄與右欄的值)
@@ -330,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 量測「產品名稱」單行所需完整寬度 (產品名稱絕不換行)
       const prodNameFullText = cleanProductName ? `產品名稱: ${cleanProductName}` : '產品名稱:';
-      const requiredProdNameW = measureCtx.measureText(prodNameFullText).width + 8;
+      const requiredProdNameW = measureCtx.measureText(prodNameFullText).width + Math.round(2 * (effectiveDpi / 72));
 
       // 若產品名稱超出標準左欄寬度，則直接加寬左欄，保持右欄寬度不變
       const currentLeftW = Math.max(baseLeftMaxW, Math.ceil(requiredProdNameW));
@@ -353,7 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (maxH <= availableH) {
         isFit = true;
       } else {
-        fontSizePx *= 0.96; // 垂直高度超出時適度縮小字級 (4%)
+        fontSizePx *= 0.97; // 垂直高度超出時適度縮小字級
       }
     }
 
@@ -363,6 +382,8 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.height = canvasHeight;
 
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
     // 純白背景 (無黑外框、無中界線)
     ctx.fillStyle = '#ffffff';
@@ -371,7 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 開始繪製文字
     ctx.fillStyle = '#000000';
     ctx.textBaseline = 'top';
-    ctx.font = `${Math.round(fontSizePx)}px ${fontStack}`;
+    ctx.font = `500 ${fontSizePx}px ${fontStack}`;
 
     // 繪製左欄
     let currentY = padY;
@@ -467,11 +488,11 @@ document.addEventListener('DOMContentLoaded', () => {
     return lines;
   }
 
-  // 檔名淨化與格式化：{產品名稱}_{顏色}_{規格}.png
+  // 檔名淨化與格式化：{產品名稱}_{顏色}_{規格}.png (移除 Windows 不合法字元與多餘符號)
   function sanitizeNamePart(text) {
     if (!text) return '';
     return String(text)
-      .replace(/[\s\/\-\\?%*:|"<>()[\]{},.；：，。、]/g, '_')
+      .replace(/[\s\/\-\\?%*:|"<>()[\]{},.；：，。、\x00-\x1f]/g, '_')
       .replace(/_+/g, '_')
       .replace(/^_+|_+$/g, '');
   }
@@ -482,13 +503,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     let name = sanitizeNamePart(item.product_name) || `商品_${index + 1}`;
-    if (name.length > 50) name = name.substring(0, 50).replace(/_+$/, '');
+    if (name.length > 40) name = name.substring(0, 40).replace(/_+$/, '');
 
     let color = sanitizeNamePart(item.color);
-    if (color.length > 25) color = color.substring(0, 25).replace(/_+$/, '');
+    if (color.length > 20) color = color.substring(0, 20).replace(/_+$/, '');
 
     let spec = sanitizeNamePart(item.spec);
-    if (spec.length > 25) spec = spec.substring(0, 25).replace(/_+$/, '');
+    if (spec.length > 20) spec = spec.substring(0, 20).replace(/_+$/, '');
 
     const parts = [name];
     if (color) parts.push(color);
@@ -504,7 +525,86 @@ document.addEventListener('DOMContentLoaded', () => {
     return baseName;
   }
 
-  // 6. 打包下載 ZIP 檔 (安全檔名修復與唯一性防重名機制)
+  // 6.1 一鍵直接存入資料夾 (File System Access API - 免解壓縮、完全無 Windows 安全性警告)
+  if (btnSaveToFolder) {
+    btnSaveToFolder.addEventListener('click', async () => {
+      if (generatedCanvases.length === 0) return;
+
+      if (!('showDirectoryPicker' in window)) {
+        alert('您的瀏覽器不支援「直接存入資料夾」功能（建議使用 Chrome 或 Edge 瀏覽器）。系統將自動為您切換為「打包下載 ZIP」！');
+        btnGenerateZip.click();
+        return;
+      }
+
+      let dirHandle;
+      try {
+        dirHandle = await window.showDirectoryPicker({
+          mode: 'readwrite',
+          startIn: 'downloads'
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          return; // 使用者主動取消選擇
+        }
+        console.error('選取資料夾失敗:', err);
+        alert('無法存取該資料夾，請確認權限或改用「打包下載 ZIP」。');
+        return;
+      }
+
+      progressContainer.classList.remove('hidden');
+      progressBar.style.width = '0%';
+      progressText.textContent = '正在寫入圖片至所選資料夾...';
+      progressPercent.textContent = '0%';
+
+      const namingFormatSelect = document.getElementById('namingFormat');
+      const namingMode = namingFormatSelect ? namingFormatSelect.value : 'safe';
+      const total = generatedCanvases.length;
+      const padLength = Math.max(String(total).length, 2);
+      const usedFilenames = new Map();
+
+      for (let i = 0; i < total; i++) {
+        const { canvas, item } = generatedCanvases[i];
+        const baseFilename = getLabelBaseName(item, i, namingMode, padLength);
+
+        let filename = `${baseFilename}.png`;
+        const lowerName = filename.toLowerCase();
+        if (usedFilenames.has(lowerName)) {
+          let count = usedFilenames.get(lowerName) + 1;
+          usedFilenames.set(lowerName, count);
+          filename = `${baseFilename} (${count}).png`;
+          while (usedFilenames.has(filename.toLowerCase())) {
+            count++;
+            filename = `${baseFilename} (${count}).png`;
+          }
+          usedFilenames.set(filename.toLowerCase(), 1);
+        } else {
+          usedFilenames.set(lowerName, 1);
+        }
+
+        try {
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          if (blob) {
+            const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+          }
+        } catch (err) {
+          console.error(`第 ${i + 1} 張寫入失敗:`, err);
+        }
+
+        const percent = Math.round(((i + 1) / total) * 100);
+        progressBar.style.width = `${percent}%`;
+        progressPercent.textContent = `${percent}%`;
+        progressText.textContent = `已寫入 (${i + 1}/${total})...`;
+        await new Promise(r => setTimeout(r, 10));
+      }
+
+      progressText.textContent = `已成功將全部 ${total} 張背標圖片存入所選資料夾！`;
+    });
+  }
+
+  // 6.2 打包下載 ZIP 檔 (安全檔名修復與根目錄直出，消除 Windows Explorer 巢狀長路徑誤判)
   btnGenerateZip.addEventListener('click', async () => {
     if (generatedCanvases.length === 0) return;
 
@@ -514,7 +614,6 @@ document.addEventListener('DOMContentLoaded', () => {
     progressPercent.textContent = '0%';
 
     const zip = new JSZip();
-    const folder = zip.folder('中文背標圖片');
     const namingFormatSelect = document.getElementById('namingFormat');
     const namingMode = namingFormatSelect ? namingFormatSelect.value : 'safe';
 
@@ -546,17 +645,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         if (blob) {
           const arrayBuffer = await blob.arrayBuffer();
-          folder.file(filename, arrayBuffer, { binary: true, date: new Date() });
+          zip.file(filename, arrayBuffer, { binary: true, date: new Date() });
         } else {
           const dataUrl = canvas.toDataURL('image/png');
           const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-          folder.file(filename, base64Data, { base64: true, date: new Date() });
+          zip.file(filename, base64Data, { base64: true, date: new Date() });
         }
       } catch (err) {
         console.error(`第 ${i + 1} 張圖片打包失敗:`, err);
         const dataUrl = canvas.toDataURL('image/png');
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-        folder.file(filename, base64Data, { base64: true, date: new Date() });
+        zip.file(filename, base64Data, { base64: true, date: new Date() });
       }
 
       const percent = Math.round(((i + 1) / total) * 100);
@@ -572,7 +671,8 @@ document.addEventListener('DOMContentLoaded', () => {
       type: 'blob',
       mimeType: 'application/zip',
       compression: 'DEFLATE',
-      compressionOptions: { level: 6 }
+      compressionOptions: { level: 6 },
+      platform: 'DOS'
     });
     saveAs(zipBlob, '中文背標圖片批量打包.zip');
 

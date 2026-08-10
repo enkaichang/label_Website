@@ -35,6 +35,17 @@ document.addEventListener('DOMContentLoaded', () => {
   let generatedCanvases = [];
   let currentActiveIndex = 0;
 
+  // 預設尺寸下拉選單同步函數
+  function syncPresetDropdown() {
+    const currentVal = `${inputWidth.value}x${inputHeight.value}`;
+    const matched = Array.from(labelPreset.options).find(opt => opt.value === currentVal);
+    if (matched) {
+      labelPreset.value = currentVal;
+    } else {
+      labelPreset.value = 'custom';
+    }
+  }
+
   // 預設選單切換事件
   labelPreset.addEventListener('change', () => {
     const val = labelPreset.value;
@@ -42,12 +53,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const [w, h] = val.split('x');
       inputWidth.value = w;
       inputHeight.value = h;
-      if (parsedItems.length > 0) renderAllLabels();
+      if (parsedItems.length > 0) renderAllLabels(false);
     }
   });
-
-  inputWidth.addEventListener('input', () => { labelPreset.value = 'custom'; });
-  inputHeight.addEventListener('input', () => { labelPreset.value = 'custom'; });
 
   // 欄位標準定義與別名映射
   const FIELD_DEFINITIONS = [
@@ -95,10 +103,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 設定選項改變時自動重繪
-  [inputWidth, inputHeight, inputFontSize, selectDpi].forEach(elem => {
+  // 設定選項改變時自動同步與重繪 (支援 input 與 change 即時反應)
+  [inputWidth, inputHeight].forEach(elem => {
+    elem.addEventListener('input', () => {
+      syncPresetDropdown();
+      if (parsedItems.length > 0) renderAllLabels(false);
+    });
     elem.addEventListener('change', () => {
-      if (parsedItems.length > 0) renderAllLabels();
+      syncPresetDropdown();
+      if (parsedItems.length > 0) renderAllLabels(false);
+    });
+  });
+
+  [inputFontSize, selectDpi].forEach(elem => {
+    elem.addEventListener('input', () => {
+      if (parsedItems.length > 0) renderAllLabels(true);
+    });
+    elem.addEventListener('change', () => {
+      if (parsedItems.length > 0) renderAllLabels(true);
     });
   });
 
@@ -191,15 +213,37 @@ document.addEventListener('DOMContentLoaded', () => {
     renderAllLabels();
   }
 
-  // 4. 渲染所有背標
-  function renderAllLabels() {
+  // 4. 渲染所有背標 (若品名超長則自動拓寬並同步更新 labelWidth 輸入框)
+  function renderAllLabels(autoUpdateInput = true) {
+    if (parsedItems.length === 0) return;
+
+    let widthMm = parseFloat(inputWidth.value) || 120;
+    const heightMm = parseFloat(inputHeight.value) || 35;
+    const baseFontSizePt = parseFloat(inputFontSize.value) || 9;
+    const dpi = parseInt(selectDpi.value, 10) || 300;
+    const mmToInch = 1 / 25.4;
+
+    // 先量測所有背標中，最長品名所需的最小寬度 (確保品名絕不換行)
+    let maxActualWidthMm = widthMm;
+    parsedItems.forEach(item => {
+      const testCanvas = renderLabelToCanvas(item, widthMm, heightMm, baseFontSizePt, dpi);
+      const itemW = Math.round(testCanvas.width / (mmToInch * dpi));
+      if (itemW > maxActualWidthMm) {
+        maxActualWidthMm = itemW;
+      }
+    });
+
+    // 若長品名需要更寬的標籤，直接更新 inputWidth (labelWidth) 輸入框與 preset
+    if (maxActualWidthMm > widthMm) {
+      widthMm = maxActualWidthMm;
+      if (autoUpdateInput) {
+        inputWidth.value = widthMm;
+        syncPresetDropdown();
+      }
+    }
+
     cardsGrid.innerHTML = '';
     generatedCanvases = [];
-
-    const widthMm = parseFloat(inputWidth.value) || 80;
-    const heightMm = parseFloat(inputHeight.value) || 60;
-    const baseFontSizePt = parseFloat(inputFontSize.value) || 10;
-    const dpi = parseInt(selectDpi.value, 10) || 300;
 
     parsedItems.forEach((item, index) => {
       const canvas = renderLabelToCanvas(item, widthMm, heightMm, baseFontSizePt, dpi);
@@ -210,11 +254,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const productName = item.product_name || `商品 #${index + 1}`;
       const specName = item.spec ? ` (${item.spec})` : '';
+      const actualWidthMm = Math.round(canvas.width / (mmToInch * dpi));
 
       card.innerHTML = `
         <div class="card-header">
           <span class="card-title" title="${productName}${specName}">#${index + 1} ${productName}${specName}</span>
-          <span class="card-badge">${widthMm}x${heightMm}mm</span>
+          <span class="card-badge">${actualWidthMm}x${heightMm}mm</span>
         </div>
         <div class="card-canvas-wrapper"></div>
         <div class="card-actions">
@@ -232,41 +277,29 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 5. 無邊框、純文字雙欄對齊背標渲染演算法 (寬版橫向對齊模式)
-  function renderLabelToCanvas(item, widthMm, heightMm, baseFontSizePt, dpi) {
+  // 5. 無邊框、純文字雙欄對齊背標渲染演算法 (產品名稱不換行 + 動態自適應拓寬模式)
+  function renderLabelToCanvas(item, baseWidthMm, heightMm, baseFontSizePt, dpi) {
     const mmToInch = 1 / 25.4;
-    const canvasWidth = Math.round(widthMm * mmToInch * dpi);
+    const baseCanvasWidth = Math.round(baseWidthMm * mmToInch * dpi);
     const canvasHeight = Math.round(heightMm * mmToInch * dpi);
 
-    const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-
-    const ctx = canvas.getContext('2d');
-
-    // 純白背景 (無黑外框、無中界線)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-    // 邊距 (2.5% 邊距)
-    const padX = Math.round(canvasWidth * 0.025);
+    // 垂直邊距 (3% 邊距)
     const padY = Math.round(canvasHeight * 0.03);
-    const availableW = canvasWidth - padX * 2;
     const availableH = canvasHeight - padY * 2;
 
-    // 左右欄位 X 起始座標 (左欄 0%, 右欄 42% 起始，提供右欄極為寬裕的橫向空間)
-    const leftX = padX;
-    const rightX = padX + Math.round(availableW * 0.42);
-
-    const leftMaxW = (rightX - padX * 0.3) - leftX;
-    const rightMaxW = (padX + availableW) - rightX;
+    // 基礎欄位寬度計算
+    const basePadX = Math.round(baseCanvasWidth * 0.025);
+    const baseAvailableW = baseCanvasWidth - basePadX * 2;
+    const baseLeftMaxW = Math.round(baseAvailableW * 0.40);
+    const baseRightMaxW = Math.round(baseAvailableW * 0.56);
+    const colGap = Math.max(Math.round(baseAvailableW * 0.04), 24);
 
     const leftFields = FIELD_DEFINITIONS.filter(f => f.side === 'left');
     const rightFields = FIELD_DEFINITIONS.filter(f => f.side === 'right');
 
     // 動態防溢出字型等級計算
     let fontSizePx = baseFontSizePt * (dpi / 72);
-    let lineSpacingRatio = 1.32;
+    const lineSpacingRatio = 1.32;
     let isFit = false;
 
     let leftBlocks = [];
@@ -274,19 +307,44 @@ document.addEventListener('DOMContentLoaded', () => {
     let lineStep = 0;
     let valueIndentLeft = 0;
     let valueIndentRight = 0;
+    let finalCanvasWidth = baseCanvasWidth;
+    let finalPadX = basePadX;
+    let finalLeftX = basePadX;
+    let finalRightX = basePadX + baseLeftMaxW + colGap;
 
     const fontStack = '-apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif';
 
+    // 建立臨時量測 Canvas context
+    const measureCanvas = document.createElement('canvas');
+    const measureCtx = measureCanvas.getContext('2d');
+
+    const cleanProductName = (item.product_name || '').replace(/[\r\n\t]+/g, ' ').trim();
+
     while (!isFit && fontSizePx >= 5 * (dpi / 72)) {
-      ctx.font = `${Math.round(fontSizePx)}px ${fontStack}`;
+      measureCtx.font = `${Math.round(fontSizePx)}px ${fontStack}`;
       lineStep = fontSizePx * lineSpacingRatio;
 
       // 欄位標籤固定寬度 (對齊左欄與右欄的值)
-      valueIndentLeft = ctx.measureText('產品名稱: ').width;
-      valueIndentRight = ctx.measureText('注意事項: ').width;
+      valueIndentLeft = measureCtx.measureText('產品名稱: ').width;
+      valueIndentRight = measureCtx.measureText('注意事項: ').width;
 
-      leftBlocks = layoutColumnWithIndent(ctx, leftFields, item, leftX, valueIndentLeft, leftMaxW);
-      rightBlocks = layoutColumnWithIndent(ctx, rightFields, item, rightX, valueIndentRight, rightMaxW);
+      // 量測「產品名稱」單行所需完整寬度 (產品名稱絕不換行)
+      const prodNameFullText = cleanProductName ? `產品名稱: ${cleanProductName}` : '產品名稱:';
+      const requiredProdNameW = measureCtx.measureText(prodNameFullText).width + 8;
+
+      // 若產品名稱超出標準左欄寬度，則直接加寬左欄，保持右欄寬度不變
+      const currentLeftW = Math.max(baseLeftMaxW, Math.ceil(requiredProdNameW));
+      const currentRightW = baseRightMaxW;
+
+      const currentAvailableW = currentLeftW + colGap + currentRightW;
+      finalPadX = Math.round(currentAvailableW * 0.025);
+      finalCanvasWidth = currentAvailableW + finalPadX * 2;
+
+      finalLeftX = finalPadX;
+      finalRightX = finalPadX + currentLeftW + colGap;
+
+      leftBlocks = layoutColumnWithIndent(measureCtx, leftFields, item, finalLeftX, valueIndentLeft, currentLeftW);
+      rightBlocks = layoutColumnWithIndent(measureCtx, rightFields, item, finalRightX, valueIndentRight, currentRightW);
 
       const totalLeftH = leftBlocks.reduce((sum, b) => sum + b.lines.length * lineStep, 0);
       const totalRightH = rightBlocks.reduce((sum, b) => sum + b.lines.length * lineStep, 0);
@@ -295,9 +353,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (maxH <= availableH) {
         isFit = true;
       } else {
-        fontSizePx *= 0.96; // 縮小 4%
+        fontSizePx *= 0.96; // 垂直高度超出時適度縮小字級 (4%)
       }
     }
+
+    // 建立最終輸出 Canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = finalCanvasWidth;
+    canvas.height = canvasHeight;
+
+    const ctx = canvas.getContext('2d');
+
+    // 純白背景 (無黑外框、無中界線)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, finalCanvasWidth, canvasHeight);
 
     // 開始繪製文字
     ctx.fillStyle = '#000000';
@@ -327,32 +396,36 @@ document.addEventListener('DOMContentLoaded', () => {
     return canvas;
   }
 
-  // 專用對齊換行演算法 (完美複製圖片中的 Key / Value 對齊與縮排)
+  // 專用對齊換行演算法 (產品名稱不換行，其他欄位支援縮排折行)
   function layoutColumnWithIndent(ctx, fields, item, colStartX, valueIndentW, columnMaxW) {
     const blocks = [];
 
     fields.forEach(f => {
-      const val = item[f.key] || '';
+      const rawVal = item[f.key] || '';
+      const val = String(rawVal).replace(/[\r\n\t]+/g, ' ').trim();
       const labelStr = f.label;
       const labelW = ctx.measureText(labelStr).width;
-      const spaceW = ctx.measureText(' ').width;
 
       const indentX = colStartX + valueIndentW;
       const firstLineValMaxW = columnMaxW - labelW;
       const secondLineValMaxW = columnMaxW - valueIndentW;
 
-      // 折行計算
-      const valLines = wrapValueText(ctx, val, firstLineValMaxW, secondLineValMaxW);
-
       const fieldLines = [];
-      if (valLines.length === 0) {
-        fieldLines.push(labelStr);
+      if (f.key === 'product_name') {
+        // 產品名稱絕不換行，單行完整輸出
+        fieldLines.push(val ? `${labelStr} ${val}` : labelStr);
       } else {
-        // 第一行: Key + Value 第一段
-        fieldLines.push(labelStr + ' ' + valLines[0]);
-        // 後續行: 僅 Value 段 (X 座標由 indentX 提供)
-        for (let i = 1; i < valLines.length; i++) {
-          fieldLines.push(valLines[i]);
+        // 其他欄位正常折行
+        const valLines = wrapValueText(ctx, val, firstLineValMaxW, secondLineValMaxW);
+        if (valLines.length === 0) {
+          fieldLines.push(labelStr);
+        } else {
+          // 第一行: Key + Value 第一段
+          fieldLines.push(labelStr + ' ' + valLines[0]);
+          // 後續行: 僅 Value 段 (X 座標由 indentX 提供)
+          for (let i = 1; i < valLines.length; i++) {
+            fieldLines.push(valLines[i]);
+          }
         }
       }
 
@@ -394,7 +467,44 @@ document.addEventListener('DOMContentLoaded', () => {
     return lines;
   }
 
-  // 6. 打包下載 ZIP 檔 (安全檔名修復，防止 Windows Defender 封鎖)
+  // 檔名淨化與格式化：{產品名稱}_{顏色}_{規格}.png
+  function sanitizeNamePart(text) {
+    if (!text) return '';
+    return String(text)
+      .replace(/[\s\/\-\\?%*:|"<>()[\]{},.；：，。、]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  function getLabelBaseName(item, index, namingMode = 'safe', padLength = 2) {
+    if (namingMode === 'number') {
+      return `label_${String(index + 1).padStart(padLength, '0')}`;
+    }
+
+    let name = sanitizeNamePart(item.product_name) || `商品_${index + 1}`;
+    if (name.length > 50) name = name.substring(0, 50).replace(/_+$/, '');
+
+    let color = sanitizeNamePart(item.color);
+    if (color.length > 25) color = color.substring(0, 25).replace(/_+$/, '');
+
+    let spec = sanitizeNamePart(item.spec);
+    if (spec.length > 25) spec = spec.substring(0, 25).replace(/_+$/, '');
+
+    const parts = [name];
+    if (color) parts.push(color);
+    if (spec) parts.push(spec);
+
+    let baseName = parts.join('_');
+
+    if (namingMode === 'indexed') {
+      const indexPrefix = String(index + 1).padStart(padLength, '0');
+      baseName = `${indexPrefix}_${baseName}`;
+    }
+
+    return baseName;
+  }
+
+  // 6. 打包下載 ZIP 檔 (安全檔名修復與唯一性防重名機制)
   btnGenerateZip.addEventListener('click', async () => {
     if (generatedCanvases.length === 0) return;
 
@@ -409,39 +519,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const namingMode = namingFormatSelect ? namingFormatSelect.value : 'safe';
 
     const total = generatedCanvases.length;
+    const padLength = Math.max(String(total).length, 2);
+    const usedFilenames = new Map();
 
     for (let i = 0; i < total; i++) {
       const { canvas, item } = generatedCanvases[i];
-      let filename = '';
+      const baseFilename = getLabelBaseName(item, i, namingMode, padLength);
 
-      if (namingMode === 'number') {
-        filename = `label_${String(i + 1).padStart(3, '0')}.png`;
+      // 檔名唯一性檢查：防止同名檔案覆蓋造成 ZIP 遺失檔案
+      let filename = `${baseFilename}.png`;
+      const lowerName = filename.toLowerCase();
+      if (usedFilenames.has(lowerName)) {
+        let count = usedFilenames.get(lowerName) + 1;
+        usedFilenames.set(lowerName, count);
+        filename = `${baseFilename} (${count}).png`;
+        while (usedFilenames.has(filename.toLowerCase())) {
+          count++;
+          filename = `${baseFilename} (${count}).png`;
+        }
+        usedFilenames.set(filename.toLowerCase(), 1);
       } else {
-        // 嚴格淨化檔名：替換所有空白、空格、特殊符號與全形半形標點為底線
-        let cleanName = (item.product_name || `商品_${i + 1}`)
-          .replace(/[\s\/\-\\?%*:|"<>()[\]{},.；：，。]/g, '_')
-          .replace(/_+/g, '_')
-          .replace(/^_+|_+$/g, '');
-
-        if (cleanName.length > 25) {
-          cleanName = cleanName.substring(0, 25);
-        }
-
-        let specStr = '';
-        if (item.spec) {
-          specStr = '_' + item.spec.replace(/[\s\/\-\\?%*:|"<>()[\]{},.；：，。]/g, '_').replace(/_+/g, '_');
-          if (specStr.length > 10) specStr = specStr.substring(0, 10);
-        }
-
-        // 不再加上前綴數字編號，字尾加上 _背標
-        filename = `${cleanName}${specStr}_背標.png`;
+        usedFilenames.set(lowerName, 1);
       }
 
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-      const arrayBuffer = await blob.arrayBuffer();
-      
-      // 寫入 ZIP 時明確設定 date 與二進位格式
-      folder.file(filename, arrayBuffer, { binary: true, date: new Date() });
+      try {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (blob) {
+          const arrayBuffer = await blob.arrayBuffer();
+          folder.file(filename, arrayBuffer, { binary: true, date: new Date() });
+        } else {
+          const dataUrl = canvas.toDataURL('image/png');
+          const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+          folder.file(filename, base64Data, { base64: true, date: new Date() });
+        }
+      } catch (err) {
+        console.error(`第 ${i + 1} 張圖片打包失敗:`, err);
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+        folder.file(filename, base64Data, { base64: true, date: new Date() });
+      }
 
       const percent = Math.round(((i + 1) / total) * 100);
       progressBar.style.width = `${percent}%`;
@@ -460,7 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     saveAs(zipBlob, '中文背標圖片批量打包.zip');
 
-    progressText.textContent = '完成打包下載！';
+    progressText.textContent = `完成打包下載！(共 ${total} 個檔案)`;
   });
 
   // 7. 一鍵列印
@@ -473,12 +589,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!generatedCanvases[index]) return;
     const { canvas, item } = generatedCanvases[index];
     
-    let safeName = (item.product_name || `背標_${index + 1}`).replace(/[\/\\?%*:|"<>]/g, '_');
-    let specStr = item.spec ? `_${item.spec.replace(/[\/\\?%*:|"<>]/g, '_')}` : '';
-    const filename = `${safeName}${specStr}_背標.png`;
+    const baseName = getLabelBaseName(item, index, 'safe');
+    const filename = `${baseName}.png`;
 
     canvas.toBlob((blob) => {
-      saveAs(blob, filename);
+      if (blob) {
+        saveAs(blob, filename);
+      } else {
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = filename;
+        link.click();
+      }
     }, 'image/png');
   }
 

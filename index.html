@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>中文背標批量圖片生成器</title>
-  <!-- Google Fonts: Noto Sans TC for ultra-crisp Chinese text rendering -->
+  <title>中文背標生成器 v2.0</title>
+  <!-- Google Fonts: Noto Sans TC & Material Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <!-- xlsx-js-style for reading/writing Excel with cell background colors -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
@@ -27,18 +28,17 @@
           <line x1="3" y1="15" x2="21" y2="15"/>
         </svg>
         <div>
-          <h1>中文背標批量圖片生成器</h1>
-          <p class="subtitle">依據「中文標籤 template.xlsx」雙欄版型，批量讀取 Excel 並輸出印刷級背標圖片</p>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <h1>中文背標生成器</h1>
+            <span class="version-badge">v2.0</span>
+          </div>
+          <p class="subtitle">依據「中文標籤 template.xlsx」模板，輸出背標圖片</p>
         </div>
       </div>
       <div class="header-actions">
-        <button id="btnDownloadTemplate" class="btn btn-secondary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          下載標準 Excel 填寫範本
+        <button id="btnDownloadTemplate" class="btn btn-secondary" title="下載標準 Excel 填寫範本">
+          <span class="material-icons">download</span>
+          下載填寫範本
         </button>
       </div>
     </header>
@@ -49,12 +49,7 @@
         <div class="drop-zone" id="dropZone">
           <input type="file" id="fileInput" accept=".xlsx, .xls" hidden>
           <div class="drop-zone-content">
-            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/>
-              <polyline points="9 15 12 12 15 15"/>
-            </svg>
+            <span class="material-icons" style="font-size: 48px; color: var(--primary-color); margin-bottom: 10px; display: inline-block;">upload_file</span>
             <h3>拖曳 Excel 檔案至此處，或 <span class="browse-link">點擊瀏覽檔案</span></h3>
             <p class="file-hint">支援格式：.xlsx, .xls (請上傳包含 21 個背標欄位之 Excel 檔)</p>
             <div id="fileInfo" class="file-info hidden"></div>
@@ -64,7 +59,7 @@
         <!-- 導出與排版設定 -->
         <div class="config-panel">
           <div class="config-group">
-            <label for="labelPreset">常用尺寸預設</label>
+            <label for="labelPreset"><span class="material-icons">aspect_ratio</span>常用尺寸預設</label>
             <select id="labelPreset">
               <option value="120x35" selected>120 x 35 mm (超寬版 - 建議款式)</option>
               <option value="130x38">130 x 38 mm (特大超寬版)</option>
@@ -74,19 +69,19 @@
             </select>
           </div>
           <div class="config-group">
-            <label for="labelWidth">標籤寬度 (mm)</label>
+            <label for="labelWidth"><span class="material-icons">straighten</span>標籤寬度 (mm)</label>
             <input type="number" id="labelWidth" value="120" min="40" max="300" step="5">
           </div>
           <div class="config-group">
-            <label for="labelHeight">標籤高度 (mm)</label>
+            <label for="labelHeight"><span class="material-icons">height</span>標籤高度 (mm)</label>
             <input type="number" id="labelHeight" value="35" min="20" max="200" step="2">
           </div>
           <div class="config-group">
-            <label for="baseFontSize">基準字級 (pt)</label>
+            <label for="baseFontSize"><span class="material-icons">format_size</span>基準字級 (pt)</label>
             <input type="number" id="baseFontSize" value="9" min="5" max="18" step="0.5">
           </div>
           <div class="config-group">
-            <label for="namingFormat">ZIP 檔內圖片命名格式</label>
+            <label for="namingFormat"><span class="material-icons">badge</span>ZIP 內命名格式</label>
             <select id="namingFormat">
               <option value="safe" selected>產品名稱_顏色_規格.png (重名自動加序號)</option>
               <option value="indexed">01_產品名稱_顏色_規格.png (依序排列)</option>
@@ -94,7 +89,7 @@
             </select>
           </div>
           <div class="config-group">
-            <label for="dpiSelect">輸出解析度 (DPI，高度 ≥ 1000px 自動保底)</label>
+            <label for="dpiSelect"><span class="material-icons">high_quality</span>輸出解析度 (DPI)</label>
             <select id="dpiSelect">
               <option value="800">800 DPI (極致高清)</option>
               <option value="600" selected>600 DPI (超高清印刷 - 推薦)</option>
@@ -109,29 +104,20 @@
       <section id="actionSection" class="action-section hidden">
         <div class="action-bar">
           <div class="status-summary">
+            <span class="material-icons" style="color: var(--primary-color);">task_alt</span>
             <span>共解析到 <strong id="totalCount">0</strong> 筆背標資料</span>
           </div>
           <div class="btn-group">
             <button id="btnSaveToFolder" class="btn btn-primary" title="直接選擇電腦資料夾儲存所有 PNG 圖片，免解壓縮、無 Windows 安全性警告">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
+              <span class="material-icons">folder</span>
               一鍵存入資料夾 (推薦)
             </button>
             <button id="btnGenerateZip" class="btn btn-secondary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
+              <span class="material-icons">archive</span>
               打包下載 ZIP (.zip)
             </button>
-            <button id="btnPrintAll" class="btn btn-secondary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-                <polyline points="6 9 6 2 18 2 18 9"/>
-                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-                <rect x="6" y="14" width="12" height="8"/>
-              </svg>
+            <button id="btnPrintAll" class="btn btn-outline">
+              <span class="material-icons">print</span>
               一鍵列印所有背標
             </button>
           </div>
@@ -139,11 +125,7 @@
 
         <!-- 安全性與操作說明提示 -->
         <div class="download-tip-box">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tip-icon">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="16" x2="12" y2="12"/>
-            <line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
+          <span class="material-icons tip-icon">info</span>
           <div class="tip-content">
             <strong>避免 Windows 安全性警告提示：</strong>
             推薦使用<strong>「一鍵存入資料夾」</strong>，直接將圖片存入電腦指定資料夾（免解壓縮、完全無安全性警告）；若下載 ZIP 檔，請於 .zip 檔按右鍵 ➔「內容」➔ 勾選最下方「解除封鎖 (Unblock)」再解壓縮全部即可正常開啟。
@@ -169,17 +151,29 @@
       </section>
     </main>
 
-    <!-- Modal: 單張背標檢視與微調 -->
+    <!-- Modal: 單張背標檢視與微調 (Apple macOS / iPadOS Sheet Structure) -->
     <div id="modalOverlay" class="modal-overlay hidden">
       <div class="modal-card">
-        <button id="modalClose" class="modal-close">&times;</button>
-        <h3 class="modal-title">背標放大預覽</h3>
-        <div id="modalContent" class="modal-content"></div>
-        <div class="modal-actions">
-          <button id="btnDownloadSingle" class="btn btn-primary">下載單張 PNG</button>
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #e2e8f0;">
+          <h3 class="modal-title"><span class="material-icons">visibility</span>背標放大預覽</h3>
+          <button id="modalClose" class="modal-close" style="background: none; border: none; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center;"><span class="material-icons" style="font-size: 1.5rem;">close</span></button>
+        </div>
+        <div style="padding: 0 24px 20px; display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+          <div id="modalContent" class="modal-content"></div>
+          <div class="modal-actions">
+            <button id="btnDownloadSingle" class="btn btn-primary">
+              <span class="material-icons">download</span>
+              下載單張 PNG
+            </button>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- 頁尾 -->
+    <footer class="app-footer">
+      <p>中文背標生成器 © Powered by Enkai Chang</p>
+    </footer>
   </div>
 
   <script src="app.js"></script>

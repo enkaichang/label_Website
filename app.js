@@ -276,8 +276,14 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="card-canvas-wrapper"></div>
         <div class="card-actions">
-          <button class="btn btn-secondary btn-preview-single" data-index="${index}">放大預覽</button>
-          <button class="btn btn-primary btn-download-single" data-index="${index}">下載 PNG</button>
+          <button class="btn btn-secondary btn-preview-single" data-index="${index}">
+            <span class="material-icons">zoom_in</span>
+            放大預覽
+          </button>
+          <button class="btn btn-primary btn-download-single" data-index="${index}">
+            <span class="material-icons">download</span>
+            下載 PNG
+          </button>
         </div>
       `;
 
@@ -508,13 +514,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let color = sanitizeNamePart(item.color);
     if (color.length > 20) color = color.substring(0, 20).replace(/_+$/, '');
 
-    let spec = sanitizeNamePart(item.spec);
-    if (spec.length > 20) spec = spec.substring(0, 20).replace(/_+$/, '');
 
-    const parts = [name];
+    const parts = ["背標", name];
     if (color) parts.push(color);
-    if (spec) parts.push(spec);
-
     let baseName = parts.join('_');
 
     if (namingMode === 'indexed') {

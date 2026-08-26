@@ -494,7 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return lines;
   }
 
-  // 檔名淨化與格式化：{產品名稱}_{顏色}_{規格}.png (移除 Windows 不合法字元與多餘符號)
+  // 檔名淨化與格式化：背標_{產品名稱}_{尺寸}.png (移除 Windows 不合法字元與多餘符號)
   function sanitizeNamePart(text) {
     if (!text) return '';
     return String(text)
@@ -511,12 +511,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let name = sanitizeNamePart(item.product_name) || `商品_${index + 1}`;
     if (name.length > 40) name = name.substring(0, 40).replace(/_+$/, '');
 
-    let color = sanitizeNamePart(item.color);
-    if (color.length > 20) color = color.substring(0, 20).replace(/_+$/, '');
-
+    let size = sanitizeNamePart(item.size);
+    if (size.length > 20) size = size.substring(0, 20).replace(/_+$/, '');
 
     const parts = ["背標", name];
-    if (color) parts.push(color);
+    if (size) parts.push(size);
     let baseName = parts.join('_');
 
     if (namingMode === 'indexed') {

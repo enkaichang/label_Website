@@ -60,16 +60,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 欄位標準定義與別名映射
   const FIELD_DEFINITIONS = [
-    { key: 'product_name', label: '產品名稱:', side: 'left', aliases: ['產品名稱', '品名', '商品名稱', '產品名稱:'] },
-    { key: 'color', label: '顏色:', side: 'left', aliases: ['顏色', '顏色:'] },
-    { key: 'spec', label: '規格:', side: 'left', aliases: ['規格', '規格:'] },
-    { key: 'size', label: '尺寸:', side: 'left', aliases: ['尺寸', '尺寸:'] },
-    { key: 'net_weight', label: '淨重:', side: 'left', aliases: ['淨重', '重量', '淨重:'] },
-    { key: 'material', label: '材質:', side: 'left', aliases: ['材質', '成分', '材質:'] },
-    { key: 'quantity', label: '件數:', side: 'left', aliases: ['件數', '數量', '包裝數量', '件數:'] },
-    { key: 'origin', label: '原產地:', side: 'left', aliases: ['原產地', '產地', '製造地', '原產地:'] },
-    { key: 'mfg_date', label: '製造日期:', side: 'left', aliases: ['製造日期', '生產日期', '製造日期:'] },
-    { key: 'exp_date', label: '有效期限:', side: 'left', aliases: ['有效期限', '保存期限', '有效期', '有效期限:'] },
+    { key: 'product_name', label: '產品名稱:', side: 'left', aliases: ['產品名稱', '品名', '商品名稱', '中文品名', '中文名稱', '商品中文名稱', '中文名字', 'Product Name', 'Name', '產品名稱:'] },
+    { key: 'color', label: '顏色:', side: 'left', aliases: ['顏色', '中文顏色', 'Color', 'COLOR', '顏色:'] },
+    { key: 'spec', label: '規格:', side: 'left', aliases: ['規格', '規格/尺寸', 'Spec', 'SPEC', '規格:'] },
+    { key: 'size', label: '尺寸:', side: 'left', aliases: ['尺寸', '尺寸 (大/中/小)', '尺寸(大/中/小)', '尺寸規格', 'Size', 'SIZE', '尺寸:'] },
+    { key: 'net_weight', label: '淨重:', side: 'left', aliases: ['淨重', '重量', 'Product Net Weight (kg)', 'Net Weight', '淨重:'] },
+    { key: 'material', label: '材質:', side: 'left', aliases: ['材質', '成分', 'Material', '材質:'] },
+    { key: 'quantity', label: '件數:', side: 'left', aliases: ['件數', '數量', '包裝數量', 'Quantity', 'QTY', '件數:'] },
+    { key: 'origin', label: '原產地:', side: 'left', aliases: ['原產地', '產地', '製造地', 'Origin', '原產地:'] },
+    { key: 'mfg_date', label: '製造日期:', side: 'left', aliases: ['製造日期', '生產日期', 'Mfg Date', '製造日期:'] },
+    { key: 'exp_date', label: '有效期限:', side: 'left', aliases: ['有效期限', '保存期限', '有效期', 'Exp Date', '有效期限:'] },
     { key: 'storage', label: '保存方式:', side: 'left', aliases: ['保存方式', '儲存方式', '保存方式:'] },
     { key: 'pet_type', label: '適用寵物種類:', side: 'left', aliases: ['適用寵物種類', '適用寵物', '適用對象', '適用寵物種類:'] },
 
@@ -498,9 +498,46 @@ document.addEventListener('DOMContentLoaded', () => {
   function sanitizeNamePart(text) {
     if (!text) return '';
     return String(text)
+      .normalize('NFKC')
       .replace(/[\s\/\-\\?%*:|"<>()[\]{},.；：，。、\x00-\x1f]/g, '_')
       .replace(/_+/g, '_')
       .replace(/^_+|_+$/g, '');
+  }
+
+  // 智慧尺寸解析：綜合 spec 與 size 欄位，過濾無效佔位符並鎖定實際 SKU 尺碼 (如 XL, L, M, S, 2XL 等)
+  function resolveLabelSize(item) {
+    const rawSize = String(item.size || '').trim();
+    const rawSpec = String(item.spec || '').trim();
+    const invalidPlaceholders = new Set(['X', 'x', '-', '/', 'N/A', 'NA', '無', 'NONE', 'NULL', '—', '無尺寸']);
+
+    // 常見衣服/項圈/胸背帶標準尺碼正規式 (例如 XS, S, M, L, XL, 2XL, 3XL, 4XL, 5XL, XXS, XXL, 2XS, 3XS, 4XS, S號, M號, L號, XL號 等)
+    const stdSizePattern = /^(?:[1-5]?[X]*[SML]|FREE|ONE\s*SIZE|均碼|單一尺寸)(?:號)?$/i;
+
+    let resolved = '';
+    // 1. 若 spec 欄位明確為標準尺碼 (例如: XL, L, M, S, XL號)，優先採用為檔名規格
+    if (rawSpec && stdSizePattern.test(rawSpec)) {
+      resolved = rawSpec;
+    } else if (rawSize && !invalidPlaceholders.has(rawSize)) {
+      // 2. 若 size 欄位非無效佔位符
+      if (stdSizePattern.test(rawSize) || (!rawSize.includes('|') && !rawSize.toUpperCase().includes('CM') && rawSize.length <= 15)) {
+        resolved = rawSize;
+      } else if (rawSpec && !invalidPlaceholders.has(rawSpec)) {
+        resolved = rawSpec;
+      } else {
+        resolved = rawSize;
+      }
+    } else if (rawSpec && !invalidPlaceholders.has(rawSpec)) {
+      resolved = rawSpec;
+    }
+
+    if (resolved) {
+      // 正規化全形英文字元並去除末尾「號」
+      resolved = resolved.normalize('NFKC')
+        .replace(/號$/g, '')
+        .trim();
+    }
+
+    return resolved;
   }
 
   function getLabelBaseName(item, index, namingMode = 'safe', padLength = 2) {
@@ -511,11 +548,19 @@ document.addEventListener('DOMContentLoaded', () => {
     let name = sanitizeNamePart(item.product_name) || `商品_${index + 1}`;
     if (name.length > 40) name = name.substring(0, 40).replace(/_+$/, '');
 
-    let size = sanitizeNamePart(item.size);
+    const resolvedSize = resolveLabelSize(item);
+    let size = sanitizeNamePart(resolvedSize);
     if (size.length > 20) size = size.substring(0, 20).replace(/_+$/, '');
 
     const parts = ["背標", name];
-    if (size) parts.push(size);
+    // 排除單獨的無效佔位字元 (如 x, X, _) 並防止品名結尾重複追加相同尺寸
+    if (size && !new Set(['X', 'x', '-', '_']).has(size)) {
+      const escapedSize = size.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const alreadyHasSize = new RegExp(`(?:^|[\\s_])${escapedSize}$`, 'i').test(name);
+      if (!alreadyHasSize) {
+        parts.push(size);
+      }
+    }
     let baseName = parts.join('_');
 
     if (namingMode === 'indexed') {

@@ -169,6 +169,74 @@ document.addEventListener('DOMContentLoaded', () => {
     reader.readAsArrayBuffer(file);
   }
 
+  // 日期格式化為「年/月/日」 (例如 2026/03/15)
+  function formatDateToYMD(val) {
+    if (!val) return '';
+    if (val instanceof Date) {
+      if (isNaN(val.getTime())) return '';
+      const y = val.getFullYear();
+      const m = String(val.getMonth() + 1).padStart(2, '0');
+      const d = String(val.getDate()).padStart(2, '0');
+      return `${y}/${m}/${d}`;
+    }
+
+    const str = String(val).trim();
+    if (!str) return '';
+
+    // 格式 1: YYYY-MM-DD 或 YYYY/MM/DD 或 YYYY.MM.DD 或 YYYY年MM月DD日
+    const ymdMatch = str.match(/^(\d{4})[-\/\.年](\d{1,2})[-\/\.月](\d{1,2})日?$/);
+    if (ymdMatch) {
+      const y = ymdMatch[1];
+      const m = String(parseInt(ymdMatch[2], 10)).padStart(2, '0');
+      const d = String(parseInt(ymdMatch[3], 10)).padStart(2, '0');
+      return `${y}/${m}/${d}`;
+    }
+
+    // 格式 2: D/M/YYYY 或 DD/MM/YYYY (例如 15/3/2026) 轉為 年/月/日
+    const slashEndYearMatch = str.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{4})$/);
+    if (slashEndYearMatch) {
+      const n1 = parseInt(slashEndYearMatch[1], 10);
+      const n2 = parseInt(slashEndYearMatch[2], 10);
+      const y = slashEndYearMatch[3];
+      let m, d;
+      if (n1 > 12 && n2 <= 12) {
+        d = String(n1).padStart(2, '0');
+        m = String(n2).padStart(2, '0');
+      } else if (n1 <= 12 && n2 > 12) {
+        m = String(n1).padStart(2, '0');
+        d = String(n2).padStart(2, '0');
+      } else {
+        d = String(n1).padStart(2, '0');
+        m = String(n2).padStart(2, '0');
+      }
+      return `${y}/${m}/${d}`;
+    }
+
+    // 格式 3: 純 8 位數字 20260315
+    const numMatch = str.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (numMatch) {
+      const y = numMatch[1];
+      const m = numMatch[2];
+      const d = numMatch[3];
+      const numM = parseInt(m, 10);
+      const numD = parseInt(d, 10);
+      if (numM >= 1 && numM <= 12 && numD >= 1 && numD <= 31) {
+        return `${y}/${m}/${d}`;
+      }
+    }
+
+    // 格式 4: 僅有年與月 YYYY-MM 或 YYYY/MM 或 YYYY年MM月
+    const ymMatch = str.match(/^(\d{4})[-\/\.年](\d{1,2})月?$/);
+    if (ymMatch) {
+      const y = ymMatch[1];
+      const m = String(parseInt(ymMatch[2], 10)).padStart(2, '0');
+      return `${y}/${m}`;
+    }
+
+    // 非日期格式文字（如「五年」、「3年」、「見包裝標示」）保持原樣
+    return str;
+  }
+
   // 3. 解析與對應
   function parseExcelData(rows) {
     parsedItems = rows.map((row, idx) => {
@@ -190,19 +258,11 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
 
-        // 日期轉為 D/M/YYYY (例如 15/3/2026) 格式以匹配目標樣本樣式
-        if (value instanceof Date) {
-          const y = value.getFullYear();
-          const m = value.getMonth() + 1;
-          const d = value.getDate();
-          value = `${d}/${m}/${y}`;
+        // 日期欄位或 Date 物件統一格式化為「年/月/日」 (例如 2026/03/15)
+        if (value instanceof Date || def.key === 'mfg_date' || def.key === 'exp_date') {
+          value = formatDateToYMD(value);
         } else if (value !== null && value !== undefined) {
           value = String(value).trim();
-          // 若為 YYYY-MM-DD 格式，也轉為 D/M/YYYY
-          if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(value)) {
-            const parts = value.split('-');
-            value = `${parseInt(parts[2], 10)}/${parseInt(parts[1], 10)}/${parts[0]}`;
-          }
         } else {
           value = '';
         }
@@ -793,7 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
       '100%再生聚酯纖維(RPET)',
       1,
       '中國',
-      '15/3/2026',
+      '2026/03/15',
       '五年',
       '請置於陰涼乾燥處',
       '全齡犬',

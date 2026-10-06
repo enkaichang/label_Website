@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const y = val.getFullYear();
       const m = String(val.getMonth() + 1).padStart(2, '0');
       const d = String(val.getDate()).padStart(2, '0');
-      return `${y}/${m}/${d}`;
+      return `${y}年${m}月${d}日`;
     }
 
     const str = String(val).trim();
@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const y = ymdMatch[1];
       const m = String(parseInt(ymdMatch[2], 10)).padStart(2, '0');
       const d = String(parseInt(ymdMatch[3], 10)).padStart(2, '0');
-      return `${y}/${m}/${d}`;
+      return `${y}年${m}月${d}日`;
     }
 
     // 格式 2: D/M/YYYY 或 DD/MM/YYYY (例如 15/3/2026) 轉為 年/月/日
@@ -209,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
         d = String(n1).padStart(2, '0');
         m = String(n2).padStart(2, '0');
       }
-      return `${y}/${m}/${d}`;
+      return `${y}年${m}月${d}日`;
     }
 
     // 格式 3: 純 8 位數字 20260315
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const numM = parseInt(m, 10);
       const numD = parseInt(d, 10);
       if (numM >= 1 && numM <= 12 && numD >= 1 && numD <= 31) {
-        return `${y}/${m}/${d}`;
+        return `${y}年${m}月${d}日`;
       }
     }
 
@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ymMatch) {
       const y = ymMatch[1];
       const m = String(parseInt(ymMatch[2], 10)).padStart(2, '0');
-      return `${y}/${m}`;
+      return `${y}年${m}月`;
     }
 
     // 非日期格式文字（如「五年」、「3年」、「見包裝標示」）保持原樣
